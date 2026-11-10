@@ -1,0 +1,19 @@
+{
+  "name": "use-mirielly",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "dev": "node scripts/dev.mjs"
+  },
+  "dependencies": {
+    "@netlify/database": "2.0.3"
+  },
+  "devDependencies": {
+    "@netlify/database-dev": "1.0.2",
+    "netlify-cli": "27.16.2"
+  },
+  "packageManager": "pnpm@11.25.0"
+}
