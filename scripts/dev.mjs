@@ -9,6 +9,8 @@ import {hashPassword} from '../lib/auth.mjs';
 const db=new NetlifyDB({directory:'.local/database',logger:()=>{}});
 const connectionString=await db.start();await db.applyMigrations('netlify/database/migrations');
 const client=getDatabase({connectionString});
+// PGlite exposes one database session; never interleave transactions across sockets.
+client.pool.options.max=1;
 const localPassword=process.env.LOCAL_ADMIN_PASSWORD||randomBytes(18).toString('base64url');
 const handler=createAPI(client.pool,{local:true,passwordHash:hashPassword(localPassword)});
 const types={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.png':'image/png','.webp':'image/webp','.jpeg':'image/jpeg','.jpg':'image/jpeg'};
@@ -28,3 +30,4 @@ const server=createServer(async(req,res)=>{
 });
 server.listen(4173,'127.0.0.1',()=>{console.log('Use Mirielly disponível em http://localhost:4173');console.log('Senha temporária exclusivamente local: '+localPassword);});
 for(const s of ['SIGINT','SIGTERM'])process.on(s,async()=>{server.close();await client.pool.end();await db.stop();process.exit();});
+

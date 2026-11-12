@@ -12,7 +12,7 @@ async function request(path,body,auth=true,method='POST'){
  const headers={};if(auth&&cookie)headers.cookie=cookie;if(body!==undefined)headers['content-type']='application/json';
  return handle(new Request('https://test.local/api/'+path,{method:body===undefined?'GET':method,headers,body:body===undefined?undefined:JSON.stringify(body)}),{ip:'test'});
 }
-before(async()=>{db=new NetlifyDB({logger:()=>{}});const connectionString=await db.start();await db.applyMigrations('netlify/database/migrations');pool=getDatabase({connectionString}).pool;handle=createAPI(pool,{passwordHash:hashPassword(pass)});const r=await request('login',{password:pass},false);assert.equal(r.status,200);cookie=r.headers.get('set-cookie').split(';')[0];});
+before(async()=>{db=new NetlifyDB({logger:()=>{}});const connectionString=await db.start();await db.applyMigrations('netlify/database/migrations');pool=getDatabase({connectionString}).pool;pool.options.max=1;handle=createAPI(pool,{passwordHash:hashPassword(pass)});const r=await request('login',{password:pass},false);assert.equal(r.status,200);cookie=r.headers.get('set-cookie').split(';')[0];});
 after(async()=>{await pool?.end();await db?.stop();});
 test('hash rejects incorrect and malformed credentials',()=>{const hash=hashPassword(pass);assert.ok(verifyPassword(pass,hash));assert.equal(verifyPassword('wrong',hash),false);assert.equal(verifyPassword(pass,'invalid'),false);});
 test('public catalog contains no purchase costs; private operations need a session',async()=>{const r=await request('catalog',undefined,false);assert.equal(r.status,200);const body=await r.json();assert.ok(body.products.length===8);assert.equal(JSON.stringify(body).includes('cost_cents'),false);assert.equal((await request('admin',undefined,false)).status,401);assert.equal((await request('products',{},false)).status,401);});
@@ -59,3 +59,31 @@ test('uploaded photos are stored once and served identically; oversized images a
  const served=await request(url.replace('/api/',''),undefined,false);assert.equal(served.status,200);assert.equal(served.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await served.arrayBuffer()),image);
  assert.equal((await request('images',{data:'data:image/png;base64,'+Buffer.alloc(500001).toString('base64')})).status,413);
 });
+test('removal requires the management password and fully deletes an unsold product and its investment',async()=>{
+ const id=randomUUID(),p={request_id:id,name:'Peça sem venda para remoção',category:'Teste',description:'Teste isolado',color:'Rosa',photo_url:'/assets/hero.webp',price_cents:10000,variants:[{size:'P',stock:2,cost_cents:3000},{size:'M',stock:3,cost_cents:4000}]};
+ assert.equal((await request('products',p)).status,201);
+ const before=await (await request('admin')).json();assert.equal(before.products.find(x=>x.id===id).has_sales,false);
+ assert.equal((await request('remove-product',{id,password:pass},false)).status,401);
+ assert.equal((await request('remove-product',{id,password:'incorrect'})).status,403);
+ assert.ok((await (await request('catalog')).json()).products.some(x=>x.id===id));
+ const removed=await request('remove-product',{id,password:pass});assert.equal(removed.status,200);assert.deepEqual(await removed.json(),{ok:true,deleted:true,removed_units:5});
+ const after=await (await request('admin')).json();assert.equal(after.products.some(x=>x.id===id),false);assert.equal(after.metrics.units,before.metrics.units-5);assert.equal(after.metrics.invested,before.metrics.invested-18000);assert.equal(after.metrics.revenue,before.metrics.revenue);
+ assert.equal((await pool.query('SELECT * FROM variants WHERE product_id=$1',[id])).rows.length,0);
+ assert.equal((await request('remove-product',{id,password:pass})).status,200);
+});
+test('removal with prior sales clears current stock and investment but preserves sale costs and revenue',async()=>{
+ const id=randomUUID();await request('products',{request_id:id,name:'Peça com venda para remoção',category:'Teste',description:'Teste isolado',color:'Branco',photo_url:'/assets/look-2.webp',price_cents:10000,variants:[{size:'M',stock:3,cost_cents:4000}]});
+ let data=await (await request('admin')).json();const variant=data.products.find(x=>x.id===id).variants[0];
+ await request('movement',{variant_id:variant.id,kind:'venda',quantity:1,price_cents:10000,label_cents:0,bag_cents:0,sweet_cents:0,other_cents:0,reserve_percent:20,request_id:randomUUID()});
+ const before=await (await request('admin')).json();assert.equal(before.products.find(x=>x.id===id).has_sales,true);
+ const response=await request('remove-product',{id,password:pass});assert.equal(response.status,200);assert.equal((await response.json()).deleted,false);
+ const after=await (await request('admin')).json(),p=after.products.find(x=>x.id===id);assert.ok(p.archived);assert.equal(p.variants[0].stock,0);assert.equal(after.metrics.invested,before.metrics.invested-8000);assert.equal(after.metrics.revenue,before.metrics.revenue);assert.equal(after.metrics.goods,before.metrics.goods);assert.ok(after.sales.some(s=>s.variant_id===variant.id&&s.cost_cents===4000));assert.equal((await (await request('catalog')).json()).products.some(x=>x.id===id),false);
+});
+test('queued removal and sale preserve stock and sale history with the single-connection local database',async()=>{
+ const id=randomUUID();await request('products',{request_id:id,name:'Concorrência na remoção',category:'Teste',description:'Teste isolado',color:'Rosa',photo_url:'/assets/hero.webp',price_cents:1000,variants:[{size:'P',stock:1,cost_cents:500}]});
+ const p=(await (await request('admin')).json()).products.find(p=>p.id===id),v=p.variants[0];
+ const [sale,removed]=await Promise.all([request('movement',{variant_id:v.id,kind:'venda',quantity:1,price_cents:1000,label_cents:0,bag_cents:0,sweet_cents:0,other_cents:0,reserve_percent:0,request_id:randomUUID()}),request('remove-product',{id,password:pass})]);
+ assert.ok([200,404].includes(sale.status));assert.equal(removed.status,200);
+ const after=await (await request('admin')).json(),final=after.products.find(p=>p.id===id);if(sale.status===200){assert.ok(final.archived);assert.ok(after.sales.some(s=>s.variant_id===v.id));}else assert.equal(final,undefined);
+});
+

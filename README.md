@@ -8,6 +8,7 @@ Catálogo público e gestão privada de uma loja de moda feminina. Branco e rosa
 - Gestão em `/gestao` protegida por senha validada no servidor, sessão HttpOnly de oito horas e limite de tentativas de login.
 - Cadastro com foto, cor, descrição, preço, tamanhos, quantidades e custo de compra. As fotos são compartilhadas com o catálogo.
 - Entrada com custo médio ponderado, venda, retirada sem receita, estorno com devolução e arquivamento sem perda de histórico.
+- Remover peça junto ao nome, com confirmação da mesma senha da gestão: peças sem vendas são excluídas com seus saldos e custos; peças com vendas saem do catálogo e estoque ativo, preservando as vendas anteriores.
 - Banco PostgreSQL compartilhado. Transações com bloqueio de estoque e repetição segura dos registros de movimentação.
 - Painel de valores realizados por período e visão separada do investimento e valor potencial do estoque atual.
 - Custos por peça de etiqueta, sacola, doces e extras; despesas gerais e reserva planejada de reinvestimento.
@@ -51,6 +52,8 @@ A migração inicial inclui oito modelos fictícios, 38 peças e valores ilustra
 Node.js 24, `pnpm install`, `pnpm dev`. O banco local é independente da produção e fica na pasta ignorada `.local`.
 
 Uma senha temporária é gerada e exibida ao iniciar o servidor local. Ela não funciona no ambiente publicado: produção exige a variável secreta do Netlify. Para desenvolvimento, é possível definir `LOCAL_ADMIN_PASSWORD` em uma variável local não versionada. `pnpm test` executa testes de integração com PostgreSQL local, incluindo concorrência, estorno, proteção de custos e exportação. `pnpm build` verifica os arquivos e a sintaxe. Nenhuma senha fixa é distribuída no código ou na documentação.
+
+O emulador PGlite local compartilha uma única sessão PostgreSQL; o pool local e os testes usam uma conexão para não misturar transações. Os testes de requisições simultâneas exercitam a fila local e não substituem um teste de concorrência com múltiplas conexões em PostgreSQL real. Em produção, vendas, abastecimentos, remoções e estornos bloqueiam primeiro o produto e depois seus tamanhos, mantendo a mesma ordem de bloqueio.
 
 ## Imagens
 
