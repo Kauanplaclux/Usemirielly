@@ -1,4 +1,4 @@
-import {prepareProductPhoto} from './photo.js';
+import {prepareProductPhoto} from './photo.js?v=20261112-2';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>(Number(n||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -162,5 +162,6 @@ async function boot(){if(location.pathname.startsWith('/gestao')){try{const s=aw
 await boot();
 setInterval(()=>{if(!document.hidden&&!location.pathname.startsWith('/gestao')&&!$('#modal-root .modal'))loadCatalog();},20000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!location.pathname.startsWith('/gestao'))loadCatalog();});
+
 
 

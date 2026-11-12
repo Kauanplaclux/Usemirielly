@@ -24,3 +24,13 @@ test('oversized and unsupported original files are rejected before decoding',asy
  await assert.rejects(()=>prepareProductPhoto({name:'photo.jpg',type:'image/jpeg',size:30000001}),/30 MB/);
  await assert.rejects(()=>prepareProductPhoto({name:'photo.heic',type:'image/heic',size:10000}),/exporte como JPG/);
 });
+test('decoding uses data URLs allowed by the production CSP and never a blocked blob URL',async()=>{
+ const previous={Image:globalThis.Image,FileReader:globalThis.FileReader,document:globalThis.document},sources=[];
+ try {
+  globalThis.FileReader=class {readAsDataURL(blob){blob.arrayBuffer().then(buf=>{this.result='data:'+blob.type+';base64,'+Buffer.from(buf).toString('base64');this.onload();});}};
+  globalThis.Image=class {naturalWidth=600;naturalHeight=800;set src(value){if(!value)return;sources.push(value);queueMicrotask(()=>value.startsWith('data:')?this.onload():this.onerror());}};
+  globalThis.document={createElement:()=>fakeCanvas((w,h,type)=>new Blob(['jpeg'],{type})).canvas};
+  const data=await prepareProductPhoto(new File(['fixture'],'phone.jpg',{type:'image/jpeg'}));
+  assert.ok(data.startsWith('data:image/jpeg;base64,'));assert.ok(sources.length===1&&sources[0].startsWith('data:image/jpeg;base64,'));
+ } finally {for(const key of Object.keys(previous)){if(previous[key]===undefined)delete globalThis[key];else globalThis[key]=previous[key];}}
+});

@@ -25,15 +25,21 @@ export async function compressProductPhoto(image,makeCanvas=()=>document.createE
  } finally {canvas.width=1;canvas.height=1;}
 }
 
+function photoAsDataURL(blob) {
+ return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Não foi possível ler essa foto. Tente novamente.'));reader.readAsDataURL(blob);});
+}
+
 export async function prepareProductPhoto(file) {
  const supported=['image/jpeg','image/jpg','image/png','image/webp'];
  const namedImage=/\.(jpe?g|png|webp)$/i.test(file.name||'');
  if(!supported.includes(file.type)&&!(file.type===''&&namedImage))throw new Error('Escolha uma foto JPG, PNG ou WebP. Se estiver em HEIC, exporte como JPG ou envie uma captura de tela.');
  if(file.size>30000000)throw new Error('Escolha uma foto de até 30 MB.');
- const url=URL.createObjectURL(file),image=new Image();
+ // The site's image policy permits data: URLs, not blob: URLs. Keep decoding
+ // within that policy instead of weakening browser privacy or security settings.
+ const source=await photoAsDataURL(file),image=new Image();
  try {
-  await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Não foi possível abrir essa foto. Escolha outra imagem ou uma captura de tela dela.'));image.src=url;});
+  await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Não foi possível abrir essa foto. Escolha outra imagem ou uma captura de tela dela.'));image.src=source;});
   const blob=await compressProductPhoto(image);
-  return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Não foi possível ler a foto preparada. Tente novamente.'));reader.readAsDataURL(blob);});
- } finally {image.onload=null;image.onerror=null;image.src='';URL.revokeObjectURL(url);}
+  return await photoAsDataURL(blob);
+ } finally {image.onload=null;image.onerror=null;image.src='';}
 }
