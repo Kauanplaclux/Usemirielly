@@ -51,3 +51,11 @@ test('private export includes archived sales, full history and no session creden
  const r=await request('export');assert.equal(r.status,200);assert.ok(r.headers.get('content-disposition').includes('attachment'));
  const data=await r.json();assert.equal(data.format,'use-mirielly-backup-v1');assert.ok(data.sales.some(s=>s.voided_at));assert.ok(data.movements.length>20);assert.equal('sessions' in data,false);assert.equal('login_attempts' in data,false);
 });
+test('uploaded photos are stored once and served identically; oversized images are rejected',async()=>{
+ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ7cAAAAASUVORK5CYII=','base64');
+ const data='data:image/png;base64,'+image.toString('base64');
+ assert.equal((await request('images',{data},false)).status,401);
+ const uploaded=await request('images',{data});assert.equal(uploaded.status,201);const {url}=await uploaded.json();
+ const served=await request(url.replace('/api/',''),undefined,false);assert.equal(served.status,200);assert.equal(served.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await served.arrayBuffer()),image);
+ assert.equal((await request('images',{data:'data:image/png;base64,'+Buffer.alloc(500001).toString('base64')})).status,413);
+});

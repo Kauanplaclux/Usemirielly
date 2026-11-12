@@ -1,3 +1,4 @@
+import {prepareProductPhoto} from './photo.js';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>(Number(n||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -147,8 +148,8 @@ document.addEventListener('change',async event=>{
   if(el.id==='move-product')updateMovement(true);if(el.id==='move-kind'||el.id==='move-variant')updateMovement();
   if(el.id==='period'){period=el.value;if(period==='month'){from=today().slice(0,7)+'-01';to=today();await loadAdmin();}else if(period==='all'){from='2000-01-01';to='2099-12-31';await loadAdmin();}else{from=today().slice(0,7)+'-01';to=today();renderAdmin();}}
   if(el.id==='photo-file'&&el.files[0]){
-   const file=el.files[0];if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>15000000)throw new Error('Use uma foto PNG, JPG ou WebP de até 15 MB.');el.disabled=true;uploadingPhoto=true;
-   try{const img=await createImageBitmap(file);const scale=Math.min(1,1100/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);img.close();let data=canvas.toDataURL('image/webp',.82);if(data.length>660000)data=canvas.toDataURL('image/webp',.55);if(data.length>660000)throw new Error('Essa foto ficou muito grande. Escolha uma versão menor.');const result=await api('images',{data});$('[name="photo_url"]').value=result.url;$('#photo-preview').src=result.url;toast('Foto pronta para a vitrine.');}finally{el.disabled=false;uploadingPhoto=false;}
+   const file=el.files[0],form=el.closest('form'),submit=form.querySelector('button[type="submit"]'),error=form.querySelector('.form-error');el.disabled=true;uploadingPhoto=true;submit.disabled=true;error.textContent='';toast('Preparando e enviando sua foto…');
+   try{const data=await prepareProductPhoto(file);const result=await api('images',{data});form.querySelector('[name="photo_url"]').value=result.url;$('#photo-preview').src=result.url;toast('Foto pronta para a vitrine.');}catch(err){el.value='';error.textContent=err.message;throw err;}finally{el.disabled=false;submit.disabled=false;uploadingPhoto=false;}
   }
  }catch(err){toast(err.message);}
 });
